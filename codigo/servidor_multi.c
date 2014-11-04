@@ -76,6 +76,7 @@ void t_aula_liberar(t_aula *un_aula, t_persona *alumno)
 {
 	un_aula->cantidad_de_personas--;
 	un_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
+	cant_personas_con_mascara--;
 }
 
 
@@ -84,7 +85,6 @@ void aula_liberar_thread_safe(t_aula *un_aula, t_persona *alumno)
 	pthread_mutex_lock(&mutex_colocar_mascara);
 	t_aula_liberar(args->aula, &alumno);
 	pthread_mutex_unlock(&mutex_colocar_mascara);
-	cant_personas_con_mascara = 0;
 }
 
 
