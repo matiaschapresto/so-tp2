@@ -94,7 +94,7 @@ void colocar_mascara(t_aula *el_aula, t_persona *alumno)
 }
 
 
-void *atendedor_de_alumno(int socket_fd, t_aula *el_aula)
+void* atendedor_de_alumno(int socket_fd, t_aula *el_aula)
 {
 	t_persona alumno;
 	t_persona_inicializar(&alumno);
