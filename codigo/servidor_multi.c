@@ -201,7 +201,7 @@ int main(void)
 			// Creo un thread por cada cliente que quiere conectarse
 			pthread_t thread;
 			thread_args args = {socketfd_cliente, &el_aula};
-			if (pthread_create(&thread, NULL, &atendedor_de_alumno, (void*) &args ) != 0) {
+			if (pthread_create(&thread, NULL, &atendedor_de_alumno, &args) != 0) {
 				//atendedor_de_alumno(socketfd_cliente, &el_aula);
 				printf("Error al crear thread!!");
 				return -1;
