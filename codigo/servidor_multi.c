@@ -35,7 +35,7 @@ int cant_personas_con_mascara;
 /********************************************************************************************************/
 
 
-bool es_el_ultimo_grupo(t_aula* aula)
+bool es_el_ultimo_grupo_del(t_aula* aula)
 {
 	return (aula->cantidad_de_personas <=5);
 }
@@ -54,40 +54,38 @@ void t_aula_iniciar_vacia(t_aula *un_aula)
 	}
 
 	un_aula->cantidad_de_personas = 0;
-
 	un_aula->rescatistas_disponibles = RESCATISTAS;
 }
 
 
-void t_aula_ingresar(t_aula* un_aula, t_persona* alumno)
+void t_aula_ingresar(t_aula* aula, t_persona* alumno)
 {
-	un_aula->cantidad_de_personas++;
-	un_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]++;
+	aula->cantidad_de_personas++;
+	aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]++;
 }
 
 
-void aula_ingresar_thread_safe(t_aula* un_aula, t_persona* alumno)
+void aula_ingresar_thread_safe(t_aula* aula, t_persona* alumno)
 {
 	pthread_mutex_lock(&mutex_actualizar_aula);
-	t_aula_ingresar(un_aula, alumno);
+	t_aula_ingresar(aula, alumno);
 	pthread_mutex_unlock(&mutex_actualizar_aula);
 }
 
 
-void t_aula_liberar(t_aula* un_aula, t_persona* alumno)
+void t_aula_liberar(t_aula* aula, t_persona* alumno)
 {
-	un_aula->cantidad_de_personas--;
-	un_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
+	aula->cantidad_de_personas--;
+	aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 	cant_personas_con_mascara--;
 }
 
 
-void aula_liberar_thread_safe(t_aula* un_aula, t_persona* alumno)
+void aula_liberar_thread_safe(t_aula* aula, t_persona* alumno)
 {
 	pthread_mutex_lock(&mutex_colocar_mascara);
-	t_aula_liberar(un_aula, alumno);
+	t_aula_liberar(aula, alumno);
 	pthread_mutex_unlock(&mutex_colocar_mascara);
-	pthread_cond_signal(&condicion_hay_rescatistas);
 }
 
 
@@ -154,10 +152,21 @@ void colocar_mascara(t_persona* alumno)
 }
 
 
-void colocar_mascara_thread_safe(t_persona* alumno)
+void liberar_rescatista(t_aula* aula)
+{
+	pthread_mutex_lock(&mutex_esperar_rescatista);
+	aula->rescatistas_disponibles++;
+	pthread_mutex_unlock(&mutex_esperar_rescatista);
+	pthread_cond_signal(&condicion_hay_rescatistas);
+}
+
+
+
+void colocar_mascara_thread_safe(t_persona* alumno, t_aula* aula)
 {
 	pthread_mutex_lock(&mutex_colocar_mascara);
 	colocar_mascara(alumno);
+	liberar_rescatista(aula);
 	pthread_mutex_unlock(&mutex_colocar_mascara);
 }
 
@@ -169,7 +178,21 @@ void esperar_rescatista_para(t_persona* alumno, t_aula* aula)
 	while (aula->rescatistas_disponibles == 0)
 		pthread_cond_wait(&condicion_hay_rescatistas, &mutex_esperar_rescatista);
 
+	aula->rescatistas_disponibles--;
 	pthread_mutex_unlock(&mutex_esperar_rescatista);
+}
+
+
+void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
+{
+	pthread_mutex_lock(&mutex_colocar_mascara);
+	colocar_mascara(alumno);
+	liberar_rescatista(aula);
+
+	while (cant_personas_con_mascara < 5)
+		pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
+		
+	pthread_mutex_unlock(&mutex_colocar_mascara);
 }
 
 
@@ -218,22 +241,14 @@ void* atendedor_de_alumno(void* parameters)
 
 	esperar_rescatista_para(&alumno, aula);
 
-	if (es_el_ultimo_grupo(aula)) {
-		colocar_mascara_thread_safe(&alumno);
-		aula_liberar_thread_safe(aula, &alumno);
-	} else {
-		pthread_mutex_lock(&mutex_colocar_mascara);
-		colocar_mascara(&alumno);
+	if (es_el_ultimo_grupo_del(aula)) 
+		colocar_mascara_thread_safe(&alumno, aula);
+	else
+		esperar_para_completar_grupo_de_5(&alumno, aula);
 
-		while (cant_personas_con_mascara < 5)
-			pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
-		
-		pthread_mutex_unlock(&mutex_colocar_mascara);
-		aula_liberar_thread_safe(aula, &alumno);
-	}
-
+	aula_liberar_thread_safe(aula, &alumno);
 	enviar_respuesta(t_socket, LIBRE);
-
+	
 	printf("Listo, %s es libre!\n", alumno.nombre);
 
 	pthread_exit(NULL);
@@ -294,6 +309,8 @@ int main(void)
 
 	pthread_mutex_destroy(&mutex_actualizar_aula);
 	pthread_mutex_destroy(&mutex_colocar_mascara);
+	pthread_mutex_destroy(&mutex_esperar_rescatista);
+	pthread_cond_destroy(&condicion_hay_rescatistas);
 	pthread_cond_destroy(&condicion_desalojar_grupo_alumnos);
 
 	pthread_exit(NULL);
