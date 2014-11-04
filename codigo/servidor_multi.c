@@ -27,6 +27,8 @@ typedef struct {
 
 pthread_mutex_t mutex_actualizar_aula;
 pthread_mutex_t mutex_colocar_mascara;
+pthread_mutex_t mutex_esperar_rescatista;
+pthread_cond_t condicion_hay_rescatistas;
 pthread_cond_t condicion_desalojar_grupo_alumnos;
 int cant_personas_con_mascara;
 
@@ -57,22 +59,22 @@ void t_aula_iniciar_vacia(t_aula *un_aula)
 }
 
 
-void t_aula_ingresar(t_aula *un_aula, t_persona *alumno)
+void t_aula_ingresar(t_aula* un_aula, t_persona* alumno)
 {
 	un_aula->cantidad_de_personas++;
 	un_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]++;
 }
 
 
-void aula_ingresar_thread_safe(t_aula *un_aula, t_persona *alumno)
+void aula_ingresar_thread_safe(t_aula* un_aula, t_persona* alumno)
 {
 	pthread_mutex_lock(&mutex_actualizar_aula);
-	t_aula_ingresar(args->aula, &alumno);
+	t_aula_ingresar(un_aula, alumno);
 	pthread_mutex_unlock(&mutex_actualizar_aula);
 }
 
 
-void t_aula_liberar(t_aula *un_aula, t_persona *alumno)
+void t_aula_liberar(t_aula* un_aula, t_persona* alumno)
 {
 	un_aula->cantidad_de_personas--;
 	un_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
@@ -80,11 +82,12 @@ void t_aula_liberar(t_aula *un_aula, t_persona *alumno)
 }
 
 
-void aula_liberar_thread_safe(t_aula *un_aula, t_persona *alumno)
+void aula_liberar_thread_safe(t_aula* un_aula, t_persona* alumno)
 {
 	pthread_mutex_lock(&mutex_colocar_mascara);
-	t_aula_liberar(args->aula, &alumno);
+	t_aula_liberar(un_aula, alumno);
 	pthread_mutex_unlock(&mutex_colocar_mascara);
+	pthread_cond_signal(&condicion_hay_rescatistas);
 }
 
 
@@ -139,14 +142,7 @@ t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 }
 
 
-void colocar_mascara_thread_safe(t_aula *el_aula, t_persona *alumno)
-{
-	pthread_mutex_lock(&mutex_colocar_mascara);
-	colocar_mascara(args->aula, &alumno);
-	pthread_mutex_unlock(&mutex_colocar_mascara);
-}
-
-void colocar_mascara(t_aula *el_aula, t_persona *alumno)
+void colocar_mascara(t_persona* alumno)
 {
 	printf("Esperando rescatista. Ya casi %s!\n", alumno->nombre);
 	
@@ -158,34 +154,55 @@ void colocar_mascara(t_aula *el_aula, t_persona *alumno)
 }
 
 
+void colocar_mascara_thread_safe(t_persona* alumno)
+{
+	pthread_mutex_lock(&mutex_colocar_mascara);
+	colocar_mascara(alumno);
+	pthread_mutex_unlock(&mutex_colocar_mascara);
+}
+
+
+void esperar_rescatista_para(t_persona* alumno, t_aula* aula)
+{
+	pthread_mutex_lock(&mutex_esperar_rescatista);
+
+	while (aula->rescatistas_disponibles == 0)
+		pthread_cond_wait(&condicion_hay_rescatistas, &mutex_esperar_rescatista);
+
+	pthread_mutex_unlock(&mutex_esperar_rescatista);
+}
+
+
 void* atendedor_de_alumno(void* parameters)
 {
 	t_persona alumno;
 	t_persona_inicializar(&alumno);
 	thread_args* args = (thread_args*) parameters;
+	t_aula* aula = args->aula;
+	int t_socket = args->t_socket;
 
-	if (recibir_nombre_y_posicion(args->t_socket, &alumno) != 0) {
+	if (recibir_nombre_y_posicion(t_socket, &alumno) != 0) {
 		/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
-		terminar_servidor_de_alumno(args->t_socket, NULL, NULL);
+		terminar_servidor_de_alumno(t_socket, NULL, NULL);
 	}
 
 	printf("Atendiendo a %s en la posicion (%d, %d)\n",
 			alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
 
-	aula_ingresar_thread_safe(args->aula, &alumno);
+	aula_ingresar_thread_safe(aula, &alumno);
 
 	/// Loop de espera de pedido de movimiento.
 	for(;;) {
 		t_direccion direccion;
 
 		/// Esperamos un pedido de movimiento.
-		if (recibir_direccion(args->t_socket, &direccion) != 0) {
+		if (recibir_direccion(t_socket, &direccion) != 0) {
 			/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
-			terminar_servidor_de_alumno(args->t_socket, args->aula, &alumno);
+			terminar_servidor_de_alumno(t_socket, aula, &alumno);
 		}
 
 		/// Tratamos de movernos en nuestro modelo
-		bool pudo_moverse = intentar_moverse(args->aula, &alumno, direccion);
+		bool pudo_moverse = intentar_moverse(aula, &alumno, direccion);
 
 		if (pudo_moverse)
 			printf("%s se movio a: (%d, %d)\n", alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
@@ -199,23 +216,23 @@ void* atendedor_de_alumno(void* parameters)
 			break;
 	}
 
-	//esperar rescatista ???
+	esperar_rescatista_para(&alumno, aula);
 
-	if (es_el_ultimo_grupo(args->aula)) {
-		colocar_mascara_thread_safe(args->aula, &alumno);
-		aula_liberar_thread_safe(args->aula, &alumno);
+	if (es_el_ultimo_grupo(aula)) {
+		colocar_mascara_thread_safe(&alumno);
+		aula_liberar_thread_safe(aula, &alumno);
 	} else {
 		pthread_mutex_lock(&mutex_colocar_mascara);
-		colocar_mascara(args->aula, &alumno);
+		colocar_mascara(&alumno);
 
 		while (cant_personas_con_mascara < 5)
 			pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
 		
 		pthread_mutex_unlock(&mutex_colocar_mascara);
-		aula_liberar_thread_safe(args->aula, &alumno);
+		aula_liberar_thread_safe(aula, &alumno);
 	}
 
-	enviar_respuesta(args->t_socket, LIBRE);
+	enviar_respuesta(t_socket, LIBRE);
 
 	printf("Listo, %s es libre!\n", alumno.nombre);
 
@@ -230,6 +247,8 @@ int main(void)
 	struct sockaddr_in local, remoto;
 	pthread_mutex_init(&mutex_actualizar_aula, NULL);
 	pthread_mutex_init(&mutex_colocar_mascara, NULL);
+	pthread_mutex_init(&mutex_esperar_rescatista, NULL);
+	pthread_cond_init(&condicion_hay_rescatistas, NULL);
 	pthread_cond_init(&condicion_desalojar_grupo_alumnos, NULL);
 	cant_personas_con_mascara = 0;
 
