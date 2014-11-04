@@ -19,6 +19,13 @@ typedef struct {
 	int rescatistas_disponibles;
 } t_aula;
 
+
+typedef struct {
+	int t_socket;
+	t_aula *aula;
+} thread_args;
+
+
 void t_aula_iniciar_vacia(t_aula *un_aula)
 {
 	int i, j;
@@ -102,48 +109,48 @@ void colocar_mascara(t_aula *el_aula, t_persona *alumno)
 }
 
 
-void *atendedor_de_alumno(int socket_fd, t_aula *el_aula)
+void *atendedor_de_alumno(void *parameters)
 {
 	t_persona alumno;
 	t_persona_inicializar(&alumno);
-
-	if (recibir_nombre_y_posicion(socket_fd, &alumno) != 0) {
+	thread_args *args = parameters;
+	if (recibir_nombre_y_posicion(args->t_socket, &alumno) != 0) {
 		/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
-		terminar_servidor_de_alumno(socket_fd, NULL, NULL);
+		terminar_servidor_de_alumno(args->t_socket, NULL, NULL);
 	}
 
 	printf("Atendiendo a %s en la posicion (%d, %d)\n",
 			alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
 
-	t_aula_ingresar(el_aula, &alumno);
+	t_aula_ingresar(args->aula, &alumno);
 
 	/// Loop de espera de pedido de movimiento.
 	for(;;) {
 		t_direccion direccion;
 
 		/// Esperamos un pedido de movimiento.
-		if (recibir_direccion(socket_fd, &direccion) != 0) {
+		if (recibir_direccion(args->t_socket, &direccion) != 0) {
 			/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
-			terminar_servidor_de_alumno(socket_fd, el_aula, &alumno);
+			terminar_servidor_de_alumno(args->t_socket, args->aula, &alumno);
 		}
 
 		/// Tratamos de movernos en nuestro modelo
-		bool pudo_moverse = intentar_moverse(el_aula, &alumno, direccion);
+		bool pudo_moverse = intentar_moverse(args->aula, &alumno, direccion);
 
 		printf("%s se movio a: (%d, %d)\n", alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
 
 		/// Avisamos que ocurrio
-		enviar_respuesta(socket_fd, pudo_moverse ? OK : OCUPADO);
+		enviar_respuesta(args->t_socket, pudo_moverse ? OK : OCUPADO);
 		//printf("aca3\n");
 
 		if (alumno.salio)
 			break;
 	}
 
-	colocar_mascara(el_aula, &alumno);
+	colocar_mascara(args->aula, &alumno);
 
-	t_aula_liberar(el_aula, &alumno);
-	enviar_respuesta(socket_fd, LIBRE);
+	t_aula_liberar(args->aula, &alumno);
+	enviar_respuesta(args->t_socket, LIBRE);
 
 	printf("Listo, %s es libre!\n", alumno.nombre);
 
@@ -190,8 +197,16 @@ int main(void)
 		{
 			printf("!! Error al aceptar conexion\n");
 		}
-		else
-			atendedor_de_alumno(socketfd_cliente, &el_aula);
+		else {
+			// Creo un thread por cada cliente que quiere conectarse
+			pthread_t thread;
+			thread_args args = {socketfd_cliente, &el_aula};
+			if (pthread_create(&thread, NULL, &atendedor_de_alumno, (void*) &args ) != 0) {
+				//atendedor_de_alumno(socketfd_cliente, &el_aula);
+				printf("Error al crear thread!!");
+				return -1;
+			}
+		}
 	}
 
 
