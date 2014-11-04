@@ -305,8 +305,8 @@ int main(void)
 		}
 	}
 
-	//pthread_join(...) ???
-
+	//Explicar en el informe que pthread_join y estas funciones de limpieza no se terminan llamando, pero que en una 
+	//implementacion "en serio" se deberian llamar.
 	pthread_mutex_destroy(&mutex_actualizar_aula);
 	pthread_mutex_destroy(&mutex_colocar_mascara);
 	pthread_mutex_destroy(&mutex_esperar_rescatista);
