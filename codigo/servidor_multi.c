@@ -41,7 +41,6 @@ bool es_el_ultimo_grupo_del(t_aula* aula)
 }
 
 
-
 void t_aula_iniciar_vacia(t_aula *un_aula)
 {
 	int i, j;
@@ -76,7 +75,7 @@ void aula_ingresar_thread_safe(t_aula* aula, t_persona* alumno)
 void t_aula_liberar(t_aula* aula, t_persona* alumno)
 {
 	aula->cantidad_de_personas--;
-	aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
+	//aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 	cant_personas_con_mascara--;
 }
 
@@ -111,7 +110,7 @@ t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 
 
 	bool entre_limites = (fila >= 0) && (columna >= 0) &&
-	     (fila < ALTO_AULA) && (columna < ANCHO_AULA);
+	     (fila < ANCHO_AULA) && (columna < ALTO_AULA);
 
 	bool pudo_moverse = alumno->salio ||
 	    (entre_limites && el_aula->posiciones[fila][columna] < MAXIMO_POR_POSICION);
