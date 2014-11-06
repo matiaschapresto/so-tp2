@@ -28,10 +28,11 @@ typedef struct {
 pthread_mutex_t mutex_actualizar_aula;
 pthread_mutex_t mutex_colocar_mascara;
 pthread_mutex_t mutex_esperar_rescatista;
+pthread_mutex_t mutex_enviar_respuesta;
 pthread_cond_t condicion_hay_rescatistas;
 pthread_cond_t condicion_desalojar_grupo_alumnos;
 int cant_personas_con_mascara;
-
+bool estan_los_5;
 /********************************************************************************************************/
 
 
@@ -77,14 +78,17 @@ void t_aula_liberar(t_aula* aula, t_persona* alumno)
 	aula->cantidad_de_personas--;
 	//aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 	cant_personas_con_mascara--;
+
+	if (cant_personas_con_mascara == 0)
+		estan_los_5 = false;
 }
 
 
 void aula_liberar_thread_safe(t_aula* aula, t_persona* alumno)
 {
-	pthread_mutex_lock(&mutex_colocar_mascara);
+	pthread_mutex_lock(&mutex_actualizar_aula);
 	t_aula_liberar(aula, alumno);
-	pthread_mutex_unlock(&mutex_colocar_mascara);
+	pthread_mutex_unlock(&mutex_actualizar_aula);
 }
 
 
@@ -99,6 +103,45 @@ static void terminar_servidor_de_alumno(int socket_fd, t_aula *aula, t_persona *
 
 
 t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
+{
+	int fila = alumno->posicion_fila;
+	int columna = alumno->posicion_columna;
+	alumno->salio = direccion_moverse_hacia(dir, &fila, &columna);
+
+	///char buf[STRING_MAXIMO];
+	///t_direccion_convertir_a_string(dir, buf);
+	///printf("%s intenta moverse hacia %s (%d, %d)... ", alumno->nombre, buf, fila, columna);
+
+
+	bool entre_limites = (fila >= 0) && (columna >= 0) &&
+	     (fila < ANCHO_AULA) && (columna < ALTO_AULA);
+
+	bool pudo_moverse = alumno->salio ||
+	    (entre_limites && el_aula->posiciones[fila][columna] < MAXIMO_POR_POSICION);
+
+
+	if (pudo_moverse)
+	{
+		if (!alumno->salio)
+			el_aula->posiciones[fila][columna]++;
+		el_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
+
+		alumno->posicion_fila = fila;
+		alumno->posicion_columna = columna;
+	}
+
+
+	//~ if (pudo_moverse)
+		//~ printf("OK!\n");
+	//~ else
+		//~ printf("Ocupado!\n");
+
+
+	return pudo_moverse;
+}
+
+
+t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 {
 	int fila = alumno->posicion_fila;
 	int columna = alumno->posicion_columna;
@@ -146,8 +189,10 @@ void colocar_mascara(t_persona* alumno)
 	alumno->tiene_mascara = true;
 	cant_personas_con_mascara++;
 
-	if (cant_personas_con_mascara == 5)
+	if (cant_personas_con_mascara == 5){
+		estan_los_5 = true;
 		pthread_cond_signal(&condicion_desalojar_grupo_alumnos);
+	}
 }
 
 
@@ -188,9 +233,10 @@ void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
 	colocar_mascara(alumno);
 	liberar_rescatista(aula);
 
-	while (cant_personas_con_mascara < 5)
+	//while (cant_personas_con_mascara < 5)
+	while(!estan_los_5)
 		pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
-		
+
 	pthread_mutex_unlock(&mutex_colocar_mascara);
 }
 
@@ -224,7 +270,7 @@ void* atendedor_de_alumno(void* parameters)
 		}
 
 		/// Tratamos de movernos en nuestro modelo
-		bool pudo_moverse = intentar_moverse(aula, &alumno, direccion);
+		bool pudo_moverse = intentar_moverse_thread_safe(aula, &alumno, direccion);
 
 		if (pudo_moverse)
 			printf("%s se movio a: (%d, %d)\n", alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
@@ -232,22 +278,27 @@ void* atendedor_de_alumno(void* parameters)
 			printf("No se pudo mover a: %s", alumno.nombre);
 
 		/// Avisamos que ocurrio
+		//pthread_mutex_lock(&mutex_enviar_respuesta);
 		enviar_respuesta(args->t_socket, pudo_moverse ? OK : OCUPADO);
+		//pthread_mutex_unlock(&mutex_enviar_respuesta);
 
 		if (alumno.salio)
 			break;
 	}
-
+	//printf("Llegue 1\n");
 	esperar_rescatista_para(&alumno, aula);
-
-	if (es_el_ultimo_grupo_del(aula)) 
-		colocar_mascara_thread_safe(&alumno, aula);
-	else
+	//printf("Llegue 2\n");
+	//if (es_el_ultimo_grupo_del(aula)) 
+	//	colocar_mascara_thread_safe(&alumno, aula);
+	//else
 		esperar_para_completar_grupo_de_5(&alumno, aula);
-
+	//printf("Llegue 3\n");
 	aula_liberar_thread_safe(aula, &alumno);
+	//printf("Llegue 4\n");
+	//pthread_mutex_lock(&mutex_enviar_respuesta);
 	enviar_respuesta(t_socket, LIBRE);
-	
+	//pthread_mutex_unlock(&mutex_enviar_respuesta);
+	//printf("Llegue 5\n");
 	printf("Listo, %s es libre!\n", alumno.nombre);
 
 	pthread_exit(NULL);
@@ -262,9 +313,11 @@ int main(void)
 	pthread_mutex_init(&mutex_actualizar_aula, NULL);
 	pthread_mutex_init(&mutex_colocar_mascara, NULL);
 	pthread_mutex_init(&mutex_esperar_rescatista, NULL);
+	pthread_mutex_init(&mutex_enviar_respuesta, NULL);
 	pthread_cond_init(&condicion_hay_rescatistas, NULL);
 	pthread_cond_init(&condicion_desalojar_grupo_alumnos, NULL);
 	cant_personas_con_mascara = 0;
+	estan_los_5 = false;
 
 	/* Crear un socket de tipo INET con TCP (SOCK_STREAM). */
 	if ((socket_servidor = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
