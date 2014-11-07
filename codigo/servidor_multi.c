@@ -28,7 +28,6 @@ typedef struct {
 pthread_mutex_t mutex_actualizar_aula;
 pthread_mutex_t mutex_colocar_mascara;
 pthread_mutex_t mutex_esperar_rescatista;
-pthread_mutex_t mutex_enviar_respuesta;
 pthread_cond_t condicion_hay_rescatistas;
 pthread_cond_t condicion_desalojar_grupo_alumnos;
 int cant_personas_con_mascara;
@@ -67,9 +66,13 @@ void t_aula_ingresar(t_aula* aula, t_persona* alumno)
 
 void aula_ingresar_thread_safe(t_aula* aula, t_persona* alumno)
 {
+	//printf("alumno %s va a pedir mutex aula\n", alumno->nombre);
 	pthread_mutex_lock(&mutex_actualizar_aula);
+	//printf("alumno %s modificando aula\n", alumno->nombre);
 	t_aula_ingresar(aula, alumno);
+	//printf("alumno %s termino modificacion aula\n", alumno->nombre);
 	pthread_mutex_unlock(&mutex_actualizar_aula);
+	//printf("alumno %s largo mutex aula\n", alumno->nombre);
 }
 
 
@@ -161,12 +164,13 @@ t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_dir
 
 	if (pudo_moverse)
 	{
+		//printf("alumno %s va a pedir mutex aula para moverse\n", alumno->nombre);
 		pthread_mutex_lock(&mutex_actualizar_aula);
 		if (!alumno->salio)
 			el_aula->posiciones[fila][columna]++;
 		el_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 		pthread_mutex_unlock(&mutex_actualizar_aula);
-
+		//printf("alumno %s libero mutex aula para moverse\n", alumno->nombre);
 		alumno->posicion_fila = fila;
 		alumno->posicion_columna = columna;
 	}
@@ -254,8 +258,8 @@ void* atendedor_de_alumno(void* parameters)
 		terminar_servidor_de_alumno(t_socket, NULL, NULL);
 	}
 
-	printf("Atendiendo a %s en la posicion (%d, %d)\n",
-			alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
+	printf("Atendiendo a %s en la posicion (%d, %d), tiene el socket %d\n",
+			alumno.nombre, alumno.posicion_fila, alumno.posicion_columna, t_socket);
 
 	aula_ingresar_thread_safe(aula, &alumno);
 
@@ -264,12 +268,14 @@ void* atendedor_de_alumno(void* parameters)
 		t_direccion direccion;
 
 		/// Esperamos un pedido de movimiento.
+		//printf("%s esta recibiendo direccion en socket %d\n", alumno.nombre, t_socket);
 		if (recibir_direccion(t_socket, &direccion) != 0) {
 			/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
 			terminar_servidor_de_alumno(t_socket, aula, &alumno);
 		}
 
 		/// Tratamos de movernos en nuestro modelo
+		//printf("%s esta viendo si puede moverse\n", alumno.nombre);
 		bool pudo_moverse = intentar_moverse_thread_safe(aula, &alumno, direccion);
 
 		if (pudo_moverse)
@@ -278,19 +284,18 @@ void* atendedor_de_alumno(void* parameters)
 			printf("No se pudo mover a: %s", alumno.nombre);
 
 		/// Avisamos que ocurrio
-		//pthread_mutex_lock(&mutex_enviar_respuesta);
-		enviar_respuesta(args->t_socket, pudo_moverse ? OK : OCUPADO);
-		//pthread_mutex_unlock(&mutex_enviar_respuesta);
-
+		//printf("%s esta enviando una respuesta\n", alumno.nombre);
+		enviar_respuesta(t_socket, pudo_moverse ? OK : OCUPADO);
+		//printf("alumno %s envio mensaje\n", alumno.nombre);
 		if (alumno.salio)
 			break;
 	}
 	//printf("Llegue 1\n");
 	esperar_rescatista_para(&alumno, aula);
 	//printf("Llegue 2\n");
-	//if (es_el_ultimo_grupo_del(aula)) 
-	//	colocar_mascara_thread_safe(&alumno, aula);
-	//else
+	if (es_el_ultimo_grupo_del(aula)) 
+		colocar_mascara_thread_safe(&alumno, aula);
+	else
 		esperar_para_completar_grupo_de_5(&alumno, aula);
 	//printf("Llegue 3\n");
 	aula_liberar_thread_safe(aula, &alumno);
@@ -313,7 +318,6 @@ int main(void)
 	pthread_mutex_init(&mutex_actualizar_aula, NULL);
 	pthread_mutex_init(&mutex_colocar_mascara, NULL);
 	pthread_mutex_init(&mutex_esperar_rescatista, NULL);
-	pthread_mutex_init(&mutex_enviar_respuesta, NULL);
 	pthread_cond_init(&condicion_hay_rescatistas, NULL);
 	pthread_cond_init(&condicion_desalojar_grupo_alumnos, NULL);
 	cant_personas_con_mascara = 0;
@@ -349,8 +353,10 @@ int main(void)
 		} else {
 			// Creo un thread por cada cliente que quiere conectarse
 			pthread_t thread;
-			thread_args args = {socketfd_cliente, &el_aula};
-			if (pthread_create(&thread, NULL, atendedor_de_alumno, (void*) &args) != 0) {
+			thread_args* args = malloc(sizeof(thread_args));
+			args->t_socket = socketfd_cliente;
+			args->aula = &el_aula;
+			if (pthread_create(&thread, NULL, atendedor_de_alumno, (void*) args) != 0) {
 				printf("Error al crear thread!!");
 				return -1;
 			}
