@@ -293,9 +293,9 @@ void* atendedor_de_alumno(void* parameters)
 	esperar_rescatista_para(&alumno, aula);
 
 	if (es_el_ultimo_grupo_del(aula)) 
-		colocar_mascara_thread_safe(&alumno, aula);
+		colocar_mascara_thread_safe(&alumno, aula);	//Son menos de 5 en el aula. Les coloco la mascara y salen directamente.
 	else
-		esperar_para_completar_grupo_de_5(&alumno, aula);
+		esperar_para_completar_grupo_de_5(&alumno, aula); //Les coloco la mascara pero se quedan esperando.
 
 	aula_liberar_thread_safe(aula, &alumno);
 	enviar_respuesta(t_socket, LIBRE);
