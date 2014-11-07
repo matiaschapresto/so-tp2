@@ -195,7 +195,7 @@ void colocar_mascara(t_persona* alumno)
 
 	if (cant_personas_con_mascara == 5){
 		estan_los_5 = true;
-		pthread_cond_signal(&condicion_desalojar_grupo_alumnos);
+		pthread_cond_broadcast(&condicion_desalojar_grupo_alumnos);
 	}
 }
 
@@ -236,11 +236,10 @@ void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
 	pthread_mutex_lock(&mutex_colocar_mascara);
 	colocar_mascara(alumno);
 	liberar_rescatista(aula);
-
-	//while (cant_personas_con_mascara < 5)
+	
 	while(!estan_los_5)
 		pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
-
+	
 	pthread_mutex_unlock(&mutex_colocar_mascara);
 }
 
@@ -290,20 +289,17 @@ void* atendedor_de_alumno(void* parameters)
 		if (alumno.salio)
 			break;
 	}
-	//printf("Llegue 1\n");
+
 	esperar_rescatista_para(&alumno, aula);
-	//printf("Llegue 2\n");
+
 	if (es_el_ultimo_grupo_del(aula)) 
 		colocar_mascara_thread_safe(&alumno, aula);
 	else
 		esperar_para_completar_grupo_de_5(&alumno, aula);
-	//printf("Llegue 3\n");
+
 	aula_liberar_thread_safe(aula, &alumno);
-	//printf("Llegue 4\n");
-	//pthread_mutex_lock(&mutex_enviar_respuesta);
 	enviar_respuesta(t_socket, LIBRE);
-	//pthread_mutex_unlock(&mutex_enviar_respuesta);
-	//printf("Llegue 5\n");
+
 	printf("Listo, %s es libre!\n", alumno.nombre);
 
 	pthread_exit(NULL);
