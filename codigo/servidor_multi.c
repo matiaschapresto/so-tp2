@@ -1,11 +1,3 @@
-/*
- * servidor_multi.c
- *
- *  Created on: Nov 2, 2014
- *      Author: storres
- */
-
-
 #include <signal.h>
 #include <errno.h>
 
@@ -19,19 +11,26 @@ typedef struct {
 } t_aula;
 
 
+/* Estructura de parametros para los threads */
 typedef struct {
 	int t_socket;
 	t_aula* aula;
 } thread_args;
 
 
+/* mutex para sincronizar la actualizacion del aula */
 pthread_mutex_t mutex_actualizar_aula;
+
+/* mutex para los rescatistas */
 pthread_mutex_t mutex_colocar_mascara;
 pthread_mutex_t mutex_esperar_rescatista;
+
+/* variables de condicion para los rescatistas y el grupo de alumnos */
 pthread_cond_t condicion_hay_rescatistas;
 pthread_cond_t condicion_desalojar_grupo_alumnos;
 int cant_personas_con_mascara;
 bool estan_los_5;
+
 /********************************************************************************************************/
 
 
@@ -66,13 +65,9 @@ void t_aula_ingresar(t_aula* aula, t_persona* alumno)
 
 void aula_ingresar_thread_safe(t_aula* aula, t_persona* alumno)
 {
-	//printf("alumno %s va a pedir mutex aula\n", alumno->nombre);
 	pthread_mutex_lock(&mutex_actualizar_aula);
-	//printf("alumno %s modificando aula\n", alumno->nombre);
 	t_aula_ingresar(aula, alumno);
-	//printf("alumno %s termino modificacion aula\n", alumno->nombre);
 	pthread_mutex_unlock(&mutex_actualizar_aula);
-	//printf("alumno %s largo mutex aula\n", alumno->nombre);
 }
 
 
@@ -111,11 +106,6 @@ t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 	int columna = alumno->posicion_columna;
 	alumno->salio = direccion_moverse_hacia(dir, &fila, &columna);
 
-	///char buf[STRING_MAXIMO];
-	///t_direccion_convertir_a_string(dir, buf);
-	///printf("%s intenta moverse hacia %s (%d, %d)... ", alumno->nombre, buf, fila, columna);
-
-
 	bool entre_limites = (fila >= 0) && (columna >= 0) &&
 	     (fila < ANCHO_AULA) && (columna < ALTO_AULA);
 
@@ -132,13 +122,6 @@ t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 		alumno->posicion_fila = fila;
 		alumno->posicion_columna = columna;
 	}
-
-
-	//~ if (pudo_moverse)
-		//~ printf("OK!\n");
-	//~ else
-		//~ printf("Ocupado!\n");
-
 
 	return pudo_moverse;
 }
@@ -150,11 +133,6 @@ t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_dir
 	int columna = alumno->posicion_columna;
 	alumno->salio = direccion_moverse_hacia(dir, &fila, &columna);
 
-	///char buf[STRING_MAXIMO];
-	///t_direccion_convertir_a_string(dir, buf);
-	///printf("%s intenta moverse hacia %s (%d, %d)... ", alumno->nombre, buf, fila, columna);
-
-
 	bool entre_limites = (fila >= 0) && (columna >= 0) &&
 	     (fila < ANCHO_AULA) && (columna < ALTO_AULA);
 
@@ -164,23 +142,14 @@ t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_dir
 
 	if (pudo_moverse)
 	{
-		//printf("alumno %s va a pedir mutex aula para moverse\n", alumno->nombre);
 		pthread_mutex_lock(&mutex_actualizar_aula);
 		if (!alumno->salio)
 			el_aula->posiciones[fila][columna]++;
 		el_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 		pthread_mutex_unlock(&mutex_actualizar_aula);
-		//printf("alumno %s libero mutex aula para moverse\n", alumno->nombre);
 		alumno->posicion_fila = fila;
 		alumno->posicion_columna = columna;
 	}
-
-
-	//~ if (pudo_moverse)
-		//~ printf("OK!\n");
-	//~ else
-		//~ printf("Ocupado!\n");
-
 
 	return pudo_moverse;
 }
@@ -267,14 +236,12 @@ void* atendedor_de_alumno(void* parameters)
 		t_direccion direccion;
 
 		/// Esperamos un pedido de movimiento.
-		//printf("%s esta recibiendo direccion en socket %d\n", alumno.nombre, t_socket);
 		if (recibir_direccion(t_socket, &direccion) != 0) {
 			/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
 			terminar_servidor_de_alumno(t_socket, aula, &alumno);
 		}
 
 		/// Tratamos de movernos en nuestro modelo
-		//printf("%s esta viendo si puede moverse\n", alumno.nombre);
 		bool pudo_moverse = intentar_moverse_thread_safe(aula, &alumno, direccion);
 
 		if (pudo_moverse)
@@ -283,17 +250,15 @@ void* atendedor_de_alumno(void* parameters)
 			printf("No se pudo mover a: %s", alumno.nombre);
 
 		/// Avisamos que ocurrio
-		//printf("%s esta enviando una respuesta\n", alumno.nombre);
 		enviar_respuesta(t_socket, pudo_moverse ? OK : OCUPADO);
-		//printf("alumno %s envio mensaje\n", alumno.nombre);
 		if (alumno.salio)
 			break;
 	}
 
 	esperar_rescatista_para(&alumno, aula);
-
+    /* Son menos de 5 en el aula. Les coloco la mascara y salen directamente. */
 	if (es_el_ultimo_grupo_del(aula)) 
-		colocar_mascara_thread_safe(&alumno, aula);	//Son menos de 5 en el aula. Les coloco la mascara y salen directamente.
+		colocar_mascara_thread_safe(&alumno, aula);	
 	else
 		esperar_para_completar_grupo_de_5(&alumno, aula); //Les coloco la mascara pero se quedan esperando.
 
@@ -308,12 +273,15 @@ void* atendedor_de_alumno(void* parameters)
 
 int main(void)
 {
-	//signal(SIGUSR1, signal_terminar);
 	int socketfd_cliente, socket_servidor, socket_size;
 	struct sockaddr_in local, remoto;
+
+    /* inicializamos los mutex y variables de condicion */
 	pthread_mutex_init(&mutex_actualizar_aula, NULL);
 	pthread_mutex_init(&mutex_colocar_mascara, NULL);
 	pthread_mutex_init(&mutex_esperar_rescatista, NULL);
+
+    /* Inicio las variables de condicion */	
 	pthread_cond_init(&condicion_hay_rescatistas, NULL);
 	pthread_cond_init(&condicion_desalojar_grupo_alumnos, NULL);
 	cant_personas_con_mascara = 0;
@@ -359,8 +327,8 @@ int main(void)
 		}
 	}
 
-	//Explicar en el informe que pthread_join y estas funciones de limpieza no se terminan llamando, pero que en una 
-	//implementacion "en serio" se deberian llamar.
+	/* Explicar en el informe que pthread_join y estas funciones de limpieza no se terminan llamando, pero que en una 
+	implementacion "en serio" se deberian llamar */
 	pthread_mutex_destroy(&mutex_actualizar_aula);
 	pthread_mutex_destroy(&mutex_colocar_mascara);
 	pthread_mutex_destroy(&mutex_esperar_rescatista);
