@@ -292,7 +292,7 @@ int main(void)
 		perror("creando socket");
 	}
 
-	/* Crear nombre, usamos INADDR_ANY para indicar que cualquiera puede conectarse aquí. */
+	/* Crear nombre, usamos INADDR_ANY para indicar que cualquiera puede conectarse aqui. */
 	local.sin_family = AF_INET;
 	local.sin_addr.s_addr = INADDR_ANY;
 	local.sin_port = htons(PORT);
@@ -312,7 +312,8 @@ int main(void)
 	/// Aceptar conexiones entrantes.
 	socket_size = sizeof(remoto);
 	for(;;) {
-		if ((socketfd_cliente = accept(socket_servidor, (struct sockaddr*) &remoto, (socklen_t*) &socket_size)) == -1) {
+		if ((socketfd_cliente = accept(socket_servidor, (struct sockaddr*) &remoto,
+                                       (socklen_t*) &socket_size)) == -1) {
 			printf("!! Error al aceptar conexion\n");
 		} else {
 			// Creo un thread por cada cliente que quiere conectarse

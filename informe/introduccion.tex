@@ -1,2 +1,15 @@
 \section{Introducci\'on}
-Introducci\'on
+En el presente trabajo vamos a tratar de resolver el enunciado propuesto por la c\'atedra mediante el uso de \emph{threads}.
+
+\subsection{Objetivo}
+El objetivo es implementar un servidor que acepte m\'ultiples conexiones de clientes (usando sockets) y hacer que los mismos se comporten de determinada manera para poder emular la interacci\'on entre alumnos, rescatistas y un aula que debe ser desalojada lo antes posible para practicar un simulacro de incendio, donde debemos tener en cuenta los movimientos de traslado de los estudiantes, ya que hay diversas condiciones.
+
+\subsection{Threads y Pthreads}
+Los threads son ampliamente utilizados para implementaci\'on de servidores \textbf{HTTP}, clientes de mensajer\'ia instantanea, UI, entre otras \'areas. Por otro lado, \textbf{Pthreads} es una \textbf{especificaci\'on} y no una librer\'ia. Pthreads indica qu\'e funciones deber\'ia proveer una librer\'ia de threads, sin importar el lenguaje de programaci\'on que se est\'e usando.
+
+
+Una de las ventajas de usar threads es que todos comparten el mismo conjunto de datos que el thread padre que los crea. Adem\'as son much\'isimo m\'as eficientes que los subprocesos creados utilizando \textbf{\emph{fork()}} en cuando a performance.
+
+Pero a la vez su gran ventaja es su gran desventaja, porque al compartir el mismo conjunto de datos tenemos que tener cuidado cuando los mismos son accedidos o modificados. Comienzan a tomar reelevancia factores como el scheduling, race conditions, entre otros.
+
+En este trabajo adem\'as de implementar el servidor multi con threads, se va a tener que tener especial cuidado a la sincrinizaci\'on de los mismos para que la ejecuci\'on del servidor no tenga comportamientos inesperados.
