@@ -1,4 +1,21 @@
 \section{Detalles de implementaci\'on}
 \label{sec:Imp}
 
+\subsection{Herramientas usadas/cambiadas para realizar pruebas}
+Para poder testear la implementaci\'on se hizo un script en \emph{bash} para que corra una cierta cantidad de clientes en simult\'aneo. Adem\'as se hicieron unas ligeras modificaciones al \emph{server\_tester.py} provisto por la c\'atedra. El cambio consiste en hacer que cada vez que se ejecute \emph{server\_tester.py} se elija un nombre de pa\'is distinto. Luego, si ejecutamos 20 clientes en simult\'aneo vamos a tener una visi\'on mas clara de quienes est\'an ejecutando ya que no todos se llaman de la misma manera.
+
+El script de \emph{bash} es el siguiente:
+
+\lstinputlisting[language=bash, frame=single]{../codigo/test_server.sh}
+ 
+ El uso es sencillo, se debe ejecutar pas\'andole como parametro la cantidad de alumnos que queremos que ingresen al aula, o m\'as t\'ecnicamente, la cantidad de clientes que queremos que se conecten al servidor.
+ 
+Por otro lado, en \emph{server\_tester.py} se incluy\'o el modulo \emph{random} al principio para poder obtener un pa\'is al azar de la n-tupla de pa\'ises.
+  
+\lstinputlisting[language=Python, lastline=13, frame=single]{../codigo/server_tester.py}
+
+La obtenci\'on del nuevo pa\'is para el cliente se hace de la siguiente manera:
+\lstinputlisting[language=Python, firstline=86, lastline=89, frame=single]{../codigo/server_tester.py}
+
+La idea de las \'ultimas l\'ineas era crear una posici\'on inicial random para cada cliente creado. El motivo no es otro que poder tener diferentes casos de prueba, y no s\'olo que todos intenten ingresar a la misma posici\'on. Notar que si bien esta implementaci\'on no garantiza que no se repitan nombres de pa\'ises, al menos es mucho mejor que tener que lidiar con m\'ultiples clientes conectados mostrando todos el mismo nombre. Con estas peque\~nas modificaciones se nos facilit\'o mucho el testing del servidor.
 % section  (end)

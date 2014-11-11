@@ -6,12 +6,14 @@ import random
 import time
 from paises import paises
 
+
 HOST = 'localhost'
 PORT = 5555
 CLIENTES = 1
-#CLIENTES = 22
+
 
 class TCPFramer:
+
 	def __init__(self, socket):
 		self.sock = socket
 		self.sock.settimeout(None)
@@ -30,7 +32,9 @@ class TCPFramer:
 
 		return res.strip()
 
+
 class Cliente:
+
 	def __init__(self, nombre, posicion):
 		self.nombre   = nombre
 		self.posicion = posicion
@@ -43,7 +47,6 @@ class Cliente:
 		print(string)
 
 		self.framer.send(string)
-		#time.sleep(0.5)
 
 	def esperarMascara(self):
 		response = self.framer.receive()
@@ -84,8 +87,6 @@ class Cliente:
 lugar_inicial = (random.randint(0, 9), random.randint(0,9))
 clientes = [Cliente(paises[random.randint(0, len(paises)-1)], lugar_inicial)]
 
-#for cliente in clientes:
-#	cliente.salir()
 
 i = 0
 while len(clientes) > 0:
