@@ -1,0 +1,11 @@
+\section{Escalamiento}
+\label{sec:Esc}
+
+Si se desea escalar el software para que soporte 1.000.000 de clientes o m\'as, el primer cambio que se necesita hacer es en las dimensiones del aula, 
+ya que al ser \'esta de 10x10 y soportar 3 alumnos por posici\'on, el m\'aximo de clientes que puede soportar es de 300. Si no se desea modificar el tama\~no del aula, lo que se 
+puede hacer es ingresar cierta cantidad de alumnos al aula, y al resto mantenerlos en una cola. A medida que se va vaciando el aula, se van sacando alumnos de la cola y estos ingresan 
+al aula.
+
+En cuanto a hardware, probablemente se necesiten 1 o m\'as servidores, ya que la cantidad de clientes conectados a la vez probablemente requiera una cantidad de memoria y de c\'omputo mayor a la disponible
+en una computadora com\'un de escritorio. Los clientes se distribuir\'ian equitativamente entre los servidores, y estos van a necesitar alg\'un mecanismo de comunicaci\'on entre ellos para mantener y actualizar la misma aula. 
+Un mecanismo posible ser\'ia usar \textbf{shared memory}, ya que a nivel de memoria virtual uno querr\'ia hacer de cuenta que todos los servidores trabajan sobre las mismas direcciones de memoria.

@@ -74,7 +74,6 @@ void aula_ingresar_thread_safe(t_aula* aula, t_persona* alumno)
 void t_aula_liberar(t_aula* aula, t_persona* alumno)
 {
 	aula->cantidad_de_personas--;
-	//aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
 	cant_personas_con_mascara--;
 
 	if (cant_personas_con_mascara == 0)
@@ -221,27 +220,23 @@ void* atendedor_de_alumno(void* parameters)
 	t_aula* aula = args->aula;
 	int t_socket = args->t_socket;
 
-	if (recibir_nombre_y_posicion(t_socket, &alumno) != 0) {
-		/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
+	if (recibir_nombre_y_posicion(t_socket, &alumno) != 0)
 		terminar_servidor_de_alumno(t_socket, NULL, NULL);
-	}
 
 	printf("Atendiendo a %s en la posicion (%d, %d), tiene el socket %d\n",
 			alumno.nombre, alumno.posicion_fila, alumno.posicion_columna, t_socket);
 
 	aula_ingresar_thread_safe(aula, &alumno);
 
-	/// Loop de espera de pedido de movimiento.
+	// Loop de espera de pedido de movimiento.
 	for(;;) {
 		t_direccion direccion;
 
-		/// Esperamos un pedido de movimiento.
-		if (recibir_direccion(t_socket, &direccion) != 0) {
-			/* O la consola cortó la comunicación, o hubo un error. Cerramos todo. */
+		// Esperamos un pedido de movimiento.
+		if (recibir_direccion(t_socket, &direccion) != 0)
 			terminar_servidor_de_alumno(t_socket, aula, &alumno);
-		}
 
-		/// Tratamos de movernos en nuestro modelo
+		// Tratamos de movernos en nuestro modelo
 		bool pudo_moverse = intentar_moverse_thread_safe(aula, &alumno, direccion);
 
 		if (pudo_moverse)
@@ -249,7 +244,7 @@ void* atendedor_de_alumno(void* parameters)
 		else
 			printf("No se pudo mover a: %s", alumno.nombre);
 
-		/// Avisamos que ocurrio
+		// Avisamos que ocurrio
 		enviar_respuesta(t_socket, pudo_moverse ? OK : OCUPADO);
 		if (alumno.salio)
 			break;
@@ -328,8 +323,6 @@ int main(void)
 		}
 	}
 
-	/* Explicar en el informe que pthread_join y estas funciones de limpieza no se terminan llamando, pero que en una 
-	implementacion "en serio" se deberian llamar */
 	pthread_mutex_destroy(&mutex_actualizar_aula);
 	pthread_mutex_destroy(&mutex_colocar_mascara);
 	pthread_mutex_destroy(&mutex_esperar_rescatista);
