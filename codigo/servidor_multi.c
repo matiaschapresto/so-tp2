@@ -28,9 +28,11 @@ pthread_mutex_t mutex_esperar_rescatista;
 /* variables de condicion para los rescatistas y el grupo de alumnos */
 pthread_cond_t condicion_hay_rescatistas;
 pthread_cond_t condicion_desalojar_grupo_alumnos;
+pthread_cond_t condicion_alumnos_dejaron_aula;
 int cant_personas_con_mascara;
 bool estan_los_5;
-
+bool estan_saliendo_los_5;
+int personas_que_salieron;
 /********************************************************************************************************/
 
 
@@ -75,9 +77,14 @@ void t_aula_liberar(t_aula* aula, t_persona* alumno)
 {
 	aula->cantidad_de_personas--;
 	cant_personas_con_mascara--;
+	personas_que_salieron++;
 
-	if (cant_personas_con_mascara == 0)
+	if (personas_que_salieron == 5) {
+		personas_que_salieron = 0;
+		estan_saliendo_los_5 = false;
 		estan_los_5 = false;
+		pthread_cond_broadcast(&condicion_alumnos_dejaron_aula);
+	}
 }
 
 
@@ -198,16 +205,27 @@ void esperar_rescatista_para(t_persona* alumno, t_aula* aula)
 	pthread_mutex_unlock(&mutex_esperar_rescatista);
 }
 
+void esperar_que_terminen_de_salir()
+{	
+	while (estan_saliendo_los_5) 
+		pthread_cond_wait(&condicion_alumnos_dejaron_aula, &mutex_colocar_mascara);
+}
+
 
 void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
 {
 	pthread_mutex_lock(&mutex_colocar_mascara);
 	colocar_mascara(alumno);
 	liberar_rescatista(aula);
-	
-	while(!estan_los_5)
+		
+	if (estan_saliendo_los_5)
+		esperar_que_terminen_de_salir();
+
+	while (!estan_los_5)
 		pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
 	
+	estan_saliendo_los_5 = true;
+
 	pthread_mutex_unlock(&mutex_colocar_mascara);
 }
 
@@ -252,9 +270,9 @@ void* atendedor_de_alumno(void* parameters)
 
 	esperar_rescatista_para(&alumno, aula);
     /* Son menos de 5 en el aula. Les coloco la mascara y salen directamente. */
-	if (es_el_ultimo_grupo_del(aula)) 
-		colocar_mascara_thread_safe(&alumno, aula);	
-	else
+	//if (es_el_ultimo_grupo_del(aula)) 
+	//	colocar_mascara_thread_safe(&alumno, aula);	
+	//else
 		esperar_para_completar_grupo_de_5(&alumno, aula); //Les coloco la mascara pero se quedan esperando.
 
 	aula_liberar_thread_safe(aula, &alumno);
@@ -279,8 +297,11 @@ int main(void)
     /* Inicio las variables de condicion */	
 	pthread_cond_init(&condicion_hay_rescatistas, NULL);
 	pthread_cond_init(&condicion_desalojar_grupo_alumnos, NULL);
+	pthread_cond_init(&condicion_alumnos_dejaron_aula, NULL);
 	cant_personas_con_mascara = 0;
+	personas_que_salieron = 0;
 	estan_los_5 = false;
+	estan_saliendo_los_5 = false;
 
 	/* Crear un socket de tipo INET con TCP (SOCK_STREAM). */
 	if ((socket_servidor = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
