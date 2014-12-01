@@ -24,6 +24,7 @@ pthread_mutex_t mutex_actualizar_aula;
 /* mutex para los rescatistas */
 pthread_mutex_t mutex_colocar_mascara;
 pthread_mutex_t mutex_esperar_rescatista;
+pthread_mutex_t** matriz_mutex_mover_alumno;
 
 /* variables de condicion para los rescatistas y el grupo de alumnos */
 pthread_cond_t condicion_hay_rescatistas;
@@ -148,11 +149,11 @@ t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_dir
 
 	if (pudo_moverse)
 	{
-		pthread_mutex_lock(&mutex_actualizar_aula);
+		pthread_mutex_trylock(&matriz_mutex_mover_alumno[fila][columna]);
 		if (!alumno->salio)
 			el_aula->posiciones[fila][columna]++;
 		el_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
-		pthread_mutex_unlock(&mutex_actualizar_aula);
+		pthread_mutex_unlock(&matriz_mutex_mover_alumno[fila][columna]);
 		alumno->posicion_fila = fila;
 		alumno->posicion_columna = columna;
 	}
@@ -205,12 +206,6 @@ void esperar_rescatista_para(t_persona* alumno, t_aula* aula)
 	pthread_mutex_unlock(&mutex_esperar_rescatista);
 }
 
-void esperar_que_terminen_de_salir()
-{	
-	while (estan_saliendo_los_5) 
-		pthread_cond_wait(&condicion_alumnos_dejaron_aula, &mutex_colocar_mascara);
-}
-
 
 void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
 {
@@ -218,8 +213,8 @@ void esperar_para_completar_grupo_de_5(t_persona* alumno, t_aula* aula)
 	colocar_mascara(alumno);
 	liberar_rescatista(aula);
 		
-	if (estan_saliendo_los_5)
-		esperar_que_terminen_de_salir();
+	while (estan_saliendo_los_5) 
+		pthread_cond_wait(&condicion_alumnos_dejaron_aula, &mutex_colocar_mascara);
 
 	while (!estan_los_5)
 		pthread_cond_wait(&condicion_desalojar_grupo_alumnos, &mutex_colocar_mascara);
@@ -270,9 +265,9 @@ void* atendedor_de_alumno(void* parameters)
 
 	esperar_rescatista_para(&alumno, aula);
     /* Son menos de 5 en el aula. Les coloco la mascara y salen directamente. */
-	//if (es_el_ultimo_grupo_del(aula)) 
-	//	colocar_mascara_thread_safe(&alumno, aula);	
-	//else
+	if (es_el_ultimo_grupo_del(aula)) 
+		colocar_mascara_thread_safe(&alumno, aula);	
+	else
 		esperar_para_completar_grupo_de_5(&alumno, aula); //Les coloco la mascara pero se quedan esperando.
 
 	aula_liberar_thread_safe(aula, &alumno);
@@ -289,7 +284,16 @@ int main(void)
 	int socketfd_cliente, socket_servidor, socket_size;
 	struct sockaddr_in local, remoto;
 
-    /* inicializamos los mutex y variables de condicion */
+    /* inicializamos los mutex y variables de condicion */	
+	matriz_mutex_mover_alumno = malloc(ALTO_AULA * sizeof(pthread_mutex_t*));
+	int i, j;
+	for(i = 0; i < ALTO_AULA; i++) {
+		matriz_mutex_mover_alumno[i] = malloc(ANCHO_AULA * sizeof(pthread_mutex_t));
+		for (j = 0; j < ANCHO_AULA; j++) {
+			pthread_mutex_init(&matriz_mutex_mover_alumno[i][j], NULL);
+		}
+	}
+
 	pthread_mutex_init(&mutex_actualizar_aula, NULL);
 	pthread_mutex_init(&mutex_colocar_mascara, NULL);
 	pthread_mutex_init(&mutex_esperar_rescatista, NULL);
