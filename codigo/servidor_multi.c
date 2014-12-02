@@ -18,6 +18,11 @@ typedef struct {
 } thread_args;
 
 
+typedef struct {
+	int fila;
+	int columna;
+} posicion;
+
 /* mutex para sincronizar la actualizacion del aula */
 pthread_mutex_t mutex_actualizar_aula;
 
@@ -134,28 +139,58 @@ t_comando intentar_moverse(t_aula *el_aula, t_persona *alumno, t_direccion dir)
 }
 
 
-t_comando intentar_moverse_thread_safe(t_aula *el_aula, t_persona *alumno, t_direccion dir)
+void calcular_orden_de_prioridades(posicion* posicion_menor_prioridad, posicion* posicion_mayor_prioridad, posicion* posicion_nueva, posicion* posicion_vieja)
 {
-	int fila = alumno->posicion_fila;
-	int columna = alumno->posicion_columna;
-	alumno->salio = direccion_moverse_hacia(dir, &fila, &columna);
+	if ( (posicion_nueva->fila < posicion_vieja->fila) || 
+		 (posicion_nueva->fila == posicion_vieja->fila && posicion_nueva->columna <= posicion_vieja->columna) ) 
+	{
+		posicion_mayor_prioridad->fila = posicion_nueva->fila;
+		posicion_mayor_prioridad->columna = posicion_nueva->columna;
+		posicion_menor_prioridad->fila = posicion_vieja->fila;
+		posicion_menor_prioridad->columna = posicion_vieja->columna;
+	} else {
+		posicion_mayor_prioridad->fila = posicion_vieja->fila;
+		posicion_mayor_prioridad->columna = posicion_vieja->columna;
+		posicion_menor_prioridad->fila = posicion_nueva->fila;
+		posicion_menor_prioridad->columna = posicion_nueva->columna;	
+	}
+}
 
-	bool entre_limites = (fila >= 0) && (columna >= 0) &&
-	     (fila < ANCHO_AULA) && (columna < ALTO_AULA);
+
+t_comando intentar_moverse_thread_safe(t_aula* el_aula, t_persona* alumno, t_direccion dir)
+{
+	posicion posicion_nueva = {alumno->posicion_fila, alumno->posicion_columna};
+	posicion posicion_vieja = {alumno->posicion_fila, alumno->posicion_columna};
+	alumno->salio = direccion_moverse_hacia(dir, &posicion_nueva.fila, &posicion_nueva.columna);
+
+	bool entre_limites = (posicion_nueva.fila >= 0) && (posicion_nueva.columna >= 0) &&
+	     (posicion_nueva.fila < ANCHO_AULA) && (posicion_nueva.columna < ALTO_AULA);
 
 	bool pudo_moverse = alumno->salio ||
-	    (entre_limites && el_aula->posiciones[fila][columna] < MAXIMO_POR_POSICION);
+	    (entre_limites && el_aula->posiciones[posicion_nueva.fila][posicion_nueva.columna] < MAXIMO_POR_POSICION); 
 
+	posicion posicion_mayor_prioridad;
+	posicion posicion_menor_prioridad;
+
+	calcular_orden_de_prioridades(&posicion_menor_prioridad, &posicion_mayor_prioridad, &posicion_nueva, &posicion_vieja);
 
 	if (pudo_moverse)
 	{
-		pthread_mutex_trylock(&matriz_mutex_mover_alumno[fila][columna]);
-		if (!alumno->salio)
-			el_aula->posiciones[fila][columna]++;
-		el_aula->posiciones[alumno->posicion_fila][alumno->posicion_columna]--;
-		pthread_mutex_unlock(&matriz_mutex_mover_alumno[fila][columna]);
-		alumno->posicion_fila = fila;
-		alumno->posicion_columna = columna;
+		if (!alumno->salio) {
+			pthread_mutex_lock(&matriz_mutex_mover_alumno[posicion_mayor_prioridad.fila][posicion_mayor_prioridad.columna]);
+			pthread_mutex_lock(&matriz_mutex_mover_alumno[posicion_menor_prioridad.fila][posicion_menor_prioridad.columna]);
+			el_aula->posiciones[posicion_nueva.fila][posicion_nueva.columna]++;
+			el_aula->posiciones[posicion_vieja.fila][posicion_vieja.columna]--;
+			pthread_mutex_unlock(&matriz_mutex_mover_alumno[posicion_menor_prioridad.fila][posicion_menor_prioridad.columna]);
+			pthread_mutex_unlock(&matriz_mutex_mover_alumno[posicion_mayor_prioridad.fila][posicion_mayor_prioridad.columna]);
+		} else {
+			pthread_mutex_lock(&matriz_mutex_mover_alumno[posicion_menor_prioridad.fila][posicion_menor_prioridad.columna]);
+			el_aula->posiciones[posicion_vieja.fila][posicion_vieja.columna]--;
+			pthread_mutex_unlock(&matriz_mutex_mover_alumno[posicion_menor_prioridad.fila][posicion_menor_prioridad.columna]);
+		}
+
+		alumno->posicion_fila = posicion_nueva.fila;
+		alumno->posicion_columna = posicion_nueva.columna;
 	}
 
 	return pudo_moverse;
@@ -255,7 +290,7 @@ void* atendedor_de_alumno(void* parameters)
 		if (pudo_moverse)
 			printf("%s se movio a: (%d, %d)\n", alumno.nombre, alumno.posicion_fila, alumno.posicion_columna);
 		else
-			printf("No se pudo mover a: %s", alumno.nombre);
+			printf("No se pudo mover a: %s\n", alumno.nombre);
 
 		// Avisamos que ocurrio
 		enviar_respuesta(t_socket, pudo_moverse ? OK : OCUPADO);
