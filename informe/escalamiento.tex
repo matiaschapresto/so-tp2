@@ -1,11 +1,25 @@
 \section{Escalamiento}
 \label{sec:Esc}
 
-Si se desea escalar el software para que soporte 1.000.000 de clientes o m\'as, el primer cambio que se necesita hacer es en las dimensiones del aula, 
+En cuanto a software, si se desea escalar la aplicaci\'on para que soporte 1.000.000 de clientes o m\'as, el primer cambio que se necesita hacer es en las dimensiones del aula, 
 ya que al ser \'esta de 10x10 y soportar 3 alumnos por posici\'on, el m\'aximo de clientes que puede soportar es de 300. Si no se desea modificar el tama\~no del aula, lo que se 
 puede hacer es ingresar cierta cantidad de alumnos al aula, y al resto mantenerlos en una cola. A medida que se va vaciando el aula, se van sacando alumnos de la cola y estos ingresan 
 al aula.
 
-En cuanto a hardware, probablemente se necesiten 1 o m\'as servidores, ya que la cantidad de clientes conectados a la vez probablemente requiera una cantidad de memoria y de c\'omputo mayor a la disponible
-en una computadora com\'un de escritorio. Los clientes se distribuir\'ian equitativamente entre los servidores, y estos van a necesitar alg\'un mecanismo de comunicaci\'on entre ellos para mantener y actualizar la misma aula. 
-Un mecanismo posible ser\'ia usar \textbf{shared memory}, ya que a nivel de memoria virtual uno querr\'ia hacer de cuenta que todos los servidores trabajan sobre las mismas direcciones de memoria.
+A la hora de implementar paralelismo, probablemente convenga utilizar threads en vez de procesos, de esta manera ganando performance ya que 
+un \textit{fork} es bastante m\'as costoso que un \textit{pthread\_create}, adem\'as de que los cambios de contexto tienen un overhead bastante
+menor en threads que en procesos, aproximadamente de un orden de magnitud. 
+Una posible optimizaci\'on es crear un pool de threads al comienzo de la aplicaci\'on, y que cada vez que se necesite un thread, se tome
+uno del pool de threads.
+La desventaja de utilizar threads es que estos comparten los mismos
+datos, y es necesario tomar recaudos extra para asegurarse de que no se pisen entre ellos. Tambi\'en se puede ajustar el tama\~no del stack de los 
+threads, ya que si estos utilizan pocas variables locales, se puede minimizar el gasto de memoria, lo cual a su vez permitir\'ia que hayan m\'as
+threads en memoria a la vez. En un Linux para una arquitectura Intel de 64 bits, el tama\~no default del stack es de 8 MB, lo cual es un desperdicio, ya que en esta aplicaci\'on
+los threads utilizan mucha menos memoria que eso.
+
+
+En cuanto al hardware, habr\'ia que calcular cual es el tama\~no m\'aximo del stack para un thread a lo largo de toda su ejecuci\'on,
+y asignar ese valor como tama\~no del stack. Luego, calcular cu\'anta memoria ocupar\'ian 1.000.000 de clientes, y en base a eso se podr\'ia decidir
+si alcanza con un solo servidor, o si es necesario distribuir el procesamiento a lo largo de varios servidores. Igualmente, puede que 
+convenga distribuir la carga entre distintos servidores, ya que si el servidor no es capaz de responder a los pedidos lo suficientemente 
+r\'apido, se generar\'ia un cuello de botella.

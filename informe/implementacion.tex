@@ -2,15 +2,13 @@
 \label{sec:Imp}
 En esta secci\'on vamos a dar detalle de nuestra implementaci\'on del servidor multicliente. Para sincronizar todos los threads se usan las variables presentes a continuaci\'on:
 
-\lstinputlisting[language=C, frame=single, firstline=20, lastline=32]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=26, lastline=41]{../codigo/servidor_multi.c}
 
 A lo largo de la secci\'on vamos a ir justificando la presencia de cada una de ellas.
 
 \subsection{Implementando el servidor \textbf{servidor\_multi.c}}
 Para implementar el servidor con soporte para m\'ultiples clientes nos basamos en el presente en \textbf{servidor\_mono.c}, tal y como sugiri\'o la c\'atedra.
-La idea principal es que al momento de conectarse el cliente, levantemos un thread con la rutina que ejecutar\'ia el mismo en un servidor mono cliente. A continuaci\'on se muestra el c\'odigo:
-
-\lstinputlisting[language=C, frame=single, lastline=20]{../codigo/servidor_multi.c}
+La idea principal es que al momento de conectarse el cliente, levantemos un thread con la rutina que ejecutar\'ia el mismo en un servidor mono cliente.
 
 Para poder pasarle par\'ametros a la rutina asociada a los threads, tuvimos que cambiar su interf\'az, es decir, antes la misma era:
 
@@ -18,13 +16,13 @@ Para poder pasarle par\'ametros a la rutina asociada a los threads, tuvimos que 
 
 y la cambiamos por:
 
-\lstinputlisting[language=C, frame=single, firstline=215, lastline=215]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=263, lastline=263]{../codigo/servidor_multi.c}
 
 Luego de ese cambio de interf\'az el c\'odigo de \textbf{atendedor\_de\_alumno} est\'a preparado para ser llamado desde un thread. Como hab\'iamos mencioado previamente, la idea ser\'ia crear un thread mientras me sigan llegando pedidos de conexi\'on al socket del server.
 
 La funci\'on principal presenta la siguiente implementaci\'on:
 
-\lstinputlisting[language=C, frame=single, firstline=269, lastline=339]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=317, lastline=393]{../codigo/servidor_multi.c}
 
 Vemos como en el \textbf{for(;;)} se crean los threads, uno por cada conexi\'on con un cliente. Ac\'a es donde cobra valor la estructura definida previamente, \emph{thread\_args}, que la usamos para pasarle los par\'ametros necesario que la funci\'on \textbf{atendedor\_de\_alumno} necesita para funcionar.
 
@@ -33,7 +31,7 @@ Dado que el servidor acepta conexiones indefinidamente, nunca se va a salir del 
 \newpage
 La funci\'on \textbf{atendedor\_de\_alumno} est\'a implementada de la siguiente manera: 
 
-\lstinputlisting[language=C, frame=single, firstline=215, lastline=266]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=263, lastline=314]{../codigo/servidor_multi.c}
 
 
 Las modificaciones de esta funci\'on con respecto a la original consistieron b\'asicamente en hacer ``thread safe'' ciertas funciones como \textbf{aula\_ingresar}, \textbf{intentar\_moverse}, \textbf{colocar\_mascara} y \textbf{aula\_liberar}, es decir, agregar un mutex alrededor de las 
@@ -43,15 +41,12 @@ con el sufijo \textbf{thread\_safe}. Para m\'as detalles sobre esto recomendamos
 ~\\
 \newline
 
-Los cambios m\'as importantes est\'an en: 
-
-\lstinputlisting[language=C, frame=single, firstline=254, lastline=259]{../codigo/servidor_multi.c}
 
 
-La funci\'on \textbf{esperar\_rescatista} modifica la cantidad de rescatistas disponibles en el aula, valor compartido por todos los threads. Por lo tanto, pide un mutex para realizar esto, y para modificar esta variable se debe cumplir la condici\'on de que 
+La funci\'on \textbf{esperar\_rescatista\_para} modifica la cantidad de rescatistas disponibles en el aula, valor compartido por todos los threads. Por lo tanto, pide un mutex para realizar esto, y para modificar esta variable se debe cumplir la condici\'on de que 
 la cantidad de rescatistas disponibles sea mayor que $0$, caso contrario el thread se bloquea hasta que se cumpla la condici\'on, liberando mientras tanto el mutex que pidio.
 
-\lstinputlisting[language=C, frame=single, firstline=190, lastline=200]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=233, lastline=242]{../codigo/servidor_multi.c}
 
 
 Una vez que a un alumno se le asign\'o un rescatista, hay 2 casos posibles: que sea el \'ultimo grupo del aula (es decir, que haya menos de 5 alumnos) o no. En el primer caso, se
@@ -59,19 +54,21 @@ le coloca la m\'ascara al alumno y se libera al rescatista, todo de manera ``thr
 
 En el segundo caso, que es el m\'as interesante, se llama a la funci\'on \textbf{esperar\_para\_completar\_grupo\_de\_5}
 
-\lstinputlisting[language=C, frame=single, firstline=202, lastline=213]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=245, lastline=260]{../codigo/servidor_multi.c}
 
 Como se puede ver, se pide un mutex para que, al colocarle la m\'ascara al alumno, se modifique a su vez la variable global que indica la cantidad de alumnos con la m\'ascara puesta. Luego, mientras no haya 5 alumnos con la m\'ascara puesta, el 
 thread se bloquea, liberando el mutex. Para despertar a todos estos threads se necesita un broadcast, el cu\'al se llama desde la funci\'on \textbf{colocar\_mascara} una vez que haya 5 personas con la 
 m\'ascara puesta.
 
-\lstinputlisting[language=C, frame=single, firstline=157, lastline=168]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=200, lastline=211]{../codigo/servidor_multi.c}
 
 \newpage
 
-Finalmente, los alumnos desalojan el aula:
+ Para evitar que se cuele un alumno mientras los 5 alumnos del grupo salen, usamos una variable de condicion (condicion\_alumnos\_dejaron\_aula), tal que los alumnos puedan 
+empezar a formar otro grupo de 5 reci\'en luego de que el \'ultimo integrante del grupo previo de 5 haya salido.
+Todo esto sucede en la funci\'on \textbf{t\_aula\_liberar}:
 
-\lstinputlisting[language=C, frame=single, firstline=74, lastline=81]{../codigo/servidor_multi.c}
+\lstinputlisting[language=C, frame=single, firstline=82, lastline=94]{../codigo/servidor_multi.c}
 
 
 El sistema est\'a libre de deadlock ya que no se cumple la condici\'on de \textbf{Hold and Wait}. Esta condici\'on no se cumple ya que si un thread toma un mutex,
